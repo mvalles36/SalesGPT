@@ -2,102 +2,96 @@ import argparse
 import json
 import logging
 import os
+import sys
 import warnings
+import requests
 
 from dotenv import load_dotenv
-from langchain_community.chat_models import ChatLiteLLM
-
 from salesgpt.agents import SalesGPT
 
-load_dotenv()  # loads .env file
+# Load environment variables
+load_dotenv()
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
 
-# Suppress logging
-logging.getLogger().setLevel(logging.CRITICAL)
+# Set up logging
+logging.basicConfig(level=logging.INFO)
 
-# LangSmith settings section, set TRACING_V2 to "true" to enable it
-# or leave it as it is, if you don't need tracing (more info in README)
-os.environ["LANGCHAIN_TRACING_V2"] = "false"
-os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
-os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_SMITH_API_KEY", "")
-os.environ["LANGCHAIN_PROJECT"] = ""  # insert you project name here
+# Validate required environment variables
+if not os.getenv("HUGGINGFACE_API_KEY"):
+    logging.error("HUGGINGFACE_API_KEY is not set in the environment.")
+    sys.exit(1)
 
-if __name__ == "__main__":
+API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large"
+HEADERS = {"Authorization": f"Bearer {os.getenv('HUGGINGFACE_API_KEY')}"}
+
+def query_hugging_face(payload):
+    """Query the Hugging Face model and return the response."""
+    try:
+        response = requests.post(API_URL, headers=HEADERS, json=payload)
+        response.raise_for_status()  # Raise an error for bad responses
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error querying Hugging Face API: {e}")
+        return None
+
+def main():
     # Initialize argparse
-    parser = argparse.ArgumentParser(description="Description of your program")
+    parser = argparse.ArgumentParser(description="SalesGPT - Your Context-Aware AI Sales Assistant")
 
     # Add arguments
-    parser.add_argument(
-        "--config", type=str, help="Path to agent config file", default=""
-    )
-    parser.add_argument(
-        "--verbose", action="store_true", help="Verbosity", default=False
-    )
-    parser.add_argument(
-        "--max_num_turns",
-        type=int,
-        help="Maximum number of turns in the sales conversation",
-        default=10,
-    )
-
+    parser.add_argument("--config", type=str, help="Path to agent config file", default="")
+    parser.add_argument("--verbose", action="store_true", help="Increase output verbosity", default=False)
+    parser.add_argument("--max_num_turns", type=int, help="Maximum number of turns in the sales conversation", default=10)
+    
     # Parse arguments
     args = parser.parse_args()
 
-    # Access arguments
-    config_path = args.config
-    verbose = args.verbose
-    max_num_turns = args.max_num_turns
-
-    llm = ChatLiteLLM(temperature=0.2, model_name="gpt-3.5-turbo")
-
-    if config_path == "":
-        print("No agent config specified, using a standard config")
-        # keep boolean as string to be consistent with JSON configs.
-        USE_TOOLS = True
+    # Configure sales agent
+    if args.config == "":
+        logging.info("No agent config specified, using standard config")
         sales_agent_kwargs = {
-            "verbose": verbose,
-            "use_tools": USE_TOOLS,
+            "verbose": args.verbose,
+            "use_tools": True,
+            "product_catalog": "examples/sample_product_catalog.txt",
+            "salesperson_name": "Ted Lasso",
         }
-
-        if USE_TOOLS:
-            sales_agent_kwargs.update(
-                {
-                    "product_catalog": "examples/sample_product_catalog.txt",
-                    "salesperson_name": "Ted Lasso",
-                }
-            )
-
-        sales_agent = SalesGPT.from_llm(llm, **sales_agent_kwargs)
+        sales_agent = SalesGPT.from_llm(llm=None, **sales_agent_kwargs)  # Pass None or your LLM object
     else:
         try:
-            with open(config_path, "r", encoding="UTF-8") as f:
+            with open(args.config, "r", encoding="UTF-8") as f:
                 config = json.load(f)
+                logging.info(f"Agent config loaded from {args.config}")
+                sales_agent = SalesGPT.from_llm(llm=None, verbose=args.verbose, **config)  # Pass None or your LLM object
         except FileNotFoundError:
-            print(f"Config file {config_path} not found.")
-            exit(1)
+            logging.error(f"Config file {args.config} not found.")
+            sys.exit(1)
         except json.JSONDecodeError:
-            print(f"Error decoding JSON from the config file {config_path}.")
-            exit(1)
-
-        print(f"Agent config {config}")
-        sales_agent = SalesGPT.from_llm(llm, verbose=verbose, **config)
+            logging.error(f"Error decoding JSON from the config file {args.config}.")
+            sys.exit(1)
 
     sales_agent.seed_agent()
+    logging.info("Sales agent initialized. Beginning conversation...")
     print("=" * 10)
-    cnt = 0
-    while cnt != max_num_turns:
-        cnt += 1
-        if cnt == max_num_turns:
-            print("Maximum number of turns reached - ending the conversation.")
-            break
-        sales_agent.step()
 
-        # end conversation
-        if "<END_OF_CALL>" in sales_agent.conversation_history[-1]:
-            print("Sales Agent determined it is time to end the conversation.")
-            break
-        human_input = input("Your response: ")
-        sales_agent.human_step(human_input)
-        print("=" * 10)
+    try:
+        for cnt in range(args.max_num_turns):
+            # Get Hugging Face output
+            output = query_hugging_face({
+                "inputs": "Please provide a sales pitch."
+            })
+            if output:
+                sales_response = output.get("generated_text", "No response from model.")
+                print(f"Sales Agent: {sales_response}")
+
+            human_input = input("Your response: ")
+            sales_agent.human_step(human_input)
+            print("=" * 10)
+
+    except KeyboardInterrupt:
+        logging.info("Conversation interrupted by user.")
+        sys.exit(0)
+
+if __name__ == "__main__":
+    main()
