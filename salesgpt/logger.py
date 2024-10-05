@@ -2,19 +2,22 @@ import logging
 import time
 from functools import wraps
 
+# Set up logging
 logger = logging.getLogger(__name__)
 
+# Handlers for logging: console and file
 stream_handler = logging.StreamHandler()
 log_filename = "output.log"
 file_handler = logging.FileHandler(filename=log_filename)
 handlers = [stream_handler, file_handler]
 
-
 class TimeFilter(logging.Filter):
+    """Custom filter to allow logging only for messages containing 'Running'."""
+    
     def filter(self, record):
         return "Running" in record.getMessage()
 
-
+# Add the custom filter to the logger
 logger.addFilter(TimeFilter())
 
 # Configure the logging module
@@ -24,14 +27,12 @@ logging.basicConfig(
     handlers=handlers,
 )
 
-
 def time_logger(func):
     """
-    Decorator function to log the time taken by any function.
+    Decorator to log the execution time of a function.
 
-    This decorator logs the execution time of the decorated function. It logs the start time before the function
-    execution, the end time after the function execution, and calculates the execution time. The function name and
-    execution time are then logged at the INFO level.
+    This decorator logs the start time, end time, and total execution time of the decorated function.
+    The function name and execution time are logged at the INFO level.
 
     Args:
         func (Callable): The function to be decorated.
@@ -39,14 +40,14 @@ def time_logger(func):
     Returns:
         Callable: The decorated function.
     """
-
+    
     @wraps(func)
     def wrapper(*args, **kwargs):
-        start_time = time.time()  # Start time before function execution
-        result = func(*args, **kwargs)  # Function execution
-        end_time = time.time()  # End time after function execution
+        start_time = time.time()  # Record the start time
+        result = func(*args, **kwargs)  # Call the function
+        end_time = time.time()  # Record the end time
         execution_time = end_time - start_time  # Calculate execution time
-        logger.info(f"Running {func.__name__}: --- {execution_time} seconds ---")
+        logger.info(f"Running {func.__name__}: --- {execution_time:.4f} seconds ---")  # Log the execution time
         return result
 
     return wrapper
