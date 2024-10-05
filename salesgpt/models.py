@@ -1,3 +1,6 @@
+import re
+import json
+import os
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional
 
 from langchain_core.callbacks import (
@@ -5,35 +8,24 @@ from langchain_core.callbacks import (
     CallbackManagerForLLMRun,
 )
 from langchain_core.language_models import BaseChatModel, SimpleChatModel
-from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage
-from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
-from langchain_core.runnables import run_in_executor
+from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_openai import ChatOpenAI
+import aioboto3
 
 from salesgpt.tools import completion_bedrock
 
 
 class BedrockCustomModel(ChatOpenAI):
-    """A custom chat model that echoes the first `n` characters of the input.
+    """A custom chat model that generates responses using Bedrock's completion service.
 
-    When contributing an implementation to LangChain, carefully document
-    the model including the initialization parameters, include
-    an example of how to initialize the model and include any relevant
-    links to the underlying models documentation or API.
-
-    Example:
-
-        .. code-block:: python
-
-            model = CustomChatModel(n=2)
-            result = model.invoke([HumanMessage(content="hello")])
-            result = model.batch([[HumanMessage(content="hello")],
-                                 [HumanMessage(content="world")]])
+    Attributes:
+        model (str): The identifier for the Bedrock model.
+        system_prompt (str): A prompt that provides context for the model.
     """
 
     model: str
     system_prompt: str
-    """The number of characters from the last message of the prompt to be echoed."""
 
     def _generate(
         self,
@@ -42,36 +34,32 @@ class BedrockCustomModel(ChatOpenAI):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> ChatResult:
-        """Override the _generate method to implement the chat model logic.
-
-        This can be a call to an API, a call to a local model, or any other
-        implementation that generates a response to the input prompt.
+        """Generates a response based on the provided messages.
 
         Args:
-            messages: the prompt composed of a list of messages.
-            stop: a list of strings on which the model should stop generating.
-                  If generation stops due to a stop token, the stop token itself
-                  SHOULD BE INCLUDED as part of the output. This is not enforced
-                  across models right now, but it's a good practice to follow since
-                  it makes it much easier to parse the output of the model
-                  downstream and understand why generation stopped.
-            run_manager: A run manager with callbacks for the LLM.
-        """
-        last_message = messages[-1]
+            messages: A list of messages including user input.
+            stop: Optional list of stop strings.
+            run_manager: Callback manager for LLM execution.
 
-        print(messages)
+        Returns:
+            ChatResult: The generated response encapsulated in a ChatResult object.
+        """
+        last_message = messages[-1]  # Get the last user message
+
+        print(messages)  # Debugging output
         response = completion_bedrock(
             model_id=self.model,
             system_prompt=self.system_prompt,
             messages=[{"content": last_message.content, "role": "user"}],
             max_tokens=1000,
         )
-        print("output", response)
+        print("output", response)  # Debugging output
+        
         content = response["content"][0]["text"]
-        message = AIMessage(content=content)
-        generation = ChatGeneration(message=message)
-        return ChatResult(generations=[generation])
-    
+        message = AIMessage(content=content)  # Create AI message from response
+        generation = ChatGeneration(message=message)  # Wrap in ChatGeneration
+        return ChatResult(generations=[generation])  # Return result
+
     async def _agenerate(
         self,
         messages: List[BaseMessage],
@@ -80,45 +68,51 @@ class BedrockCustomModel(ChatOpenAI):
         stream: Optional[bool] = None,
         **kwargs: Any,
     ) -> ChatResult:
+        """Asynchronously generates a response based on the provided messages.
+
+        Args:
+            messages: A list of messages including user input.
+            stop: Optional list of stop strings.
+            run_manager: Callback manager for asynchronous LLM execution.
+            stream: Optional boolean to indicate streaming.
+
+        Returns:
+            ChatResult: The generated response encapsulated in a ChatResult object.
+        """
         should_stream = stream if stream is not None else self.streaming
         if should_stream:
             raise NotImplementedError("Streaming not implemented")
         
-        last_message = messages[-1]
+        last_message = messages[-1]  # Get the last user message
 
-        print(messages)
+        print(messages)  # Debugging output
         response = await acompletion_bedrock(
             model_id=self.model,
             system_prompt=self.system_prompt,
             messages=[{"content": last_message.content, "role": "user"}],
             max_tokens=1000,
         )
-        print("output", response)
+        print("output", response)  # Debugging output
+        
         content = response["content"][0]["text"]
-        message = AIMessage(content=content)
-        generation = ChatGeneration(message=message)
-        return ChatResult(generations=[generation])
+        message = AIMessage(content=content)  # Create AI message from response
+        generation = ChatGeneration(message=message)  # Wrap in ChatGeneration
+        return ChatResult(generations=[generation])  # Return result
 
-        # message_dicts, params = self._create_message_dicts(messages, stop)
-        # params = {
-        #     **params,
-        #     **({"stream": stream} if stream is not None else {}),
-        #     **kwargs,
-        # }
-        # response = await self.async_client.create(messages=message_dicts, **params)
-        # return self._create_chat_result(response)
+async def acompletion_bedrock(model_id: str, system_prompt: str, messages: List[Dict[str, str]], max_tokens: int = 1000) -> Dict[str, Any]:
+    """Asynchronously generates a message with Bedrock's completion service.
 
-import aioboto3
-import os
-import json
+    Args:
+        model_id: The identifier for the Bedrock model.
+        system_prompt: A prompt that provides context for the model.
+        messages: A list of message dictionaries for the model input.
+        max_tokens: The maximum number of tokens to generate.
 
-async def acompletion_bedrock(model_id, system_prompt, messages, max_tokens=1000):
+    Returns:
+        Dict[str, Any]: The response body containing the generated message.
     """
-    High-level API call to generate a message with Anthropic Claude, refactored for async.
-    """
-    session = aioboto3.Session()
+    session = aioboto3.Session()  # Create an async session with Boto3
     async with session.client(service_name="bedrock-runtime", region_name=os.environ.get("AWS_REGION_NAME")) as bedrock_runtime:
-
         body = json.dumps(
             {
                 "anthropic_version": "bedrock-2023-05-31",
@@ -130,13 +124,8 @@ async def acompletion_bedrock(model_id, system_prompt, messages, max_tokens=1000
 
         response = await bedrock_runtime.invoke_model(body=body, modelId=model_id)
 
-        # print('RESPONSE', response)
-
-        # Correctly handle the streaming body
+        # Handle the streaming body
         response_body_bytes = await response['body'].read()
-        # print('RESPONSE BODY', response_body_bytes)
         response_body = json.loads(response_body_bytes.decode("utf-8"))
-        # print('RESPONSE BODY', response_body)
 
         return response_body
-
