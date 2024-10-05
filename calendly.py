@@ -1,6 +1,7 @@
 import os
 import requests
 from dotenv import load_dotenv
+
 load_dotenv()
 
 def list_available_event_type_uuids():
@@ -12,18 +13,18 @@ def list_available_event_type_uuids():
     }
     url = 'https://api.calendly.com/event_types'
     
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()  # Raise an error for bad responses
         data = response.json()
         event_types = data.get('collection', [])
         uuids = [event_type['uri'].split('/')[-1] for event_type in event_types]
         return uuids
-    else:
-        return f"Failed to retrieve event types: {response.status_code} - {response.text}"
+    except requests.RequestException as e:
+        return f"Failed to retrieve event types: {str(e)}"
 
-def generate_calendly_invitation_link(query):
+def generate_calendly_invitation_link(query, event_type_uuid=None):
     '''Generate a calendly invitation link based on the single query string'''
-    event_type_uuid = os.getenv("CALENDLY_EVENT_UUID")
     if not event_type_uuid:
         available_uuids = list_available_event_type_uuids()
         if isinstance(available_uuids, str):
@@ -45,12 +46,16 @@ def generate_calendly_invitation_link(query):
         "owner_type": "EventType"
     }
     
-    response = requests.post(url, json=payload, headers=headers)
-    if response.status_code == 201:
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()  # Raise an error for bad responses
         data = response.json()
-        return f"url: {data['resource']['booking_url']}"
-    else:
-        return f"Failed to create Calendly link: {response.status_code} - {response.text}"
+        if 'resource' in data and 'booking_url' in data['resource']:
+            return f"url: {data['resource']['booking_url']}"
+        else:
+            return "Unexpected response structure."
+    except requests.RequestException as e:
+        return f"Failed to create Calendly link: {str(e)}"
     
+# Example usage
 print(generate_calendly_invitation_link('test'))
-
