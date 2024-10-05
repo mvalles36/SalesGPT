@@ -1,13 +1,13 @@
 # Example conversation stages for the Sales Agent
-# Feel free to modify, add/drop stages based on the use case.
+# Adapted for use with the Facebook/bart-large model
 
 CONVERSATION_STAGES = {
-    "1": "Introduction: Start the conversation by introducing yourself and your company. Be polite and respectful while keeping the tone of the conversation professional. Your greeting should be welcoming. Always clarify in your greeting the reason why you are calling.",
-    "2": "Qualification: Qualify the prospect by confirming if they are the right person to talk to regarding your product/service. Ensure that they have the authority to make purchasing decisions.",
-    "3": "Value proposition: Briefly explain how your product/service can benefit the prospect. Focus on the unique selling points and value proposition of your product/service that sets it apart from competitors.",
-    "4": "Needs analysis: Ask open-ended questions to uncover the prospect's needs and pain points. Listen carefully to their responses and take notes.",
-    "5": "Solution presentation: Based on the prospect's needs, present your product/service as the solution that can address their pain points.",
-    "6": "Objection handling: Address any objections that the prospect may have regarding your product/service. Be prepared to provide evidence or testimonials to support your claims.",
-    "7": "Close: Ask for the sale by proposing a next step. This could be a demo, a trial or a meeting with decision-makers. Ensure to summarize what has been discussed and reiterate the benefits.",
-    "8": "End conversation: It's time to end the call as there is nothing else to be said.",
+    "1": "Introduction: Greet the prospect, introduce yourself and your company. Clarify the reason for the call politely.",
+    "2": "Qualification: Confirm if the prospect is the right contact and has purchasing authority.",
+    "3": "Value Proposition: Explain how your product/service benefits the prospect. Highlight unique selling points.",
+    "4": "Needs Analysis: Ask open-ended questions to identify the prospect's needs and pain points. Listen actively.",
+    "5": "Solution Presentation: Present your product/service as a solution to the prospect's identified needs.",
+    "6": "Objection Handling: Address any objections from the prospect. Provide evidence or testimonials to support claims.",
+    "7": "Close: Propose next steps for the sale, like a demo or a meeting. Summarize key points discussed.",
+    "8": "End Conversation: Conclude the call respectfully when the conversation is finished or if the prospect declines.",
 }
