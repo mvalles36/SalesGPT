@@ -1,13 +1,16 @@
 import asyncio
 import json
 import re
+import requests
 
-from langchain_community.chat_models import BedrockChat, ChatLiteLLM
-from langchain_openai import ChatOpenAI
+API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large"
+headers = {"Authorization": f"Bearer {os.getenv('HUGGGINGFACE_API_KEY')}"}
+
+def query(payload):
+    response = requests.post(API_URL, headers=headers, json=payload)
+    return response.json()
 
 from salesgpt.agents import SalesGPT
-from salesgpt.models import BedrockCustomModel
-
 
 class SalesGPTAPI:
     def __init__(
@@ -15,22 +18,12 @@ class SalesGPTAPI:
         config_path: str,
         verbose: bool = True,
         max_num_turns: int = 20,
-        model_name: str = "gpt-3.5-turbo",
         product_catalog: str = "examples/sample_product_catalog.txt",
         use_tools=True,
     ):
         self.config_path = config_path
         self.verbose = verbose
         self.max_num_turns = max_num_turns
-        self.model_name = model_name
-        if "anthropic" in model_name:
-            self.llm = BedrockCustomModel(
-                type="bedrock-model",
-                model=model_name,
-                system_prompt="You are a helpful assistant.",
-            )
-        else:
-            self.llm = ChatLiteLLM(temperature=0.2, model=model_name)
         self.product_catalog = product_catalog
         self.conversation_history = []
         self.use_tools = use_tools
@@ -59,7 +52,7 @@ class SalesGPTAPI:
                 }
             )
 
-        sales_agent = SalesGPT.from_llm(self.llm, **config)
+        sales_agent = SalesGPT.from_llm(query, **config)  # Using Hugging Face query function
 
         print(f"SalesGPT use_tools: {sales_agent.use_tools}")
         sales_agent.seed_agent()
@@ -80,34 +73,29 @@ class SalesGPTAPI:
 
         ai_log = await self.sales_agent.astep(stream=False)
         await self.sales_agent.adetermine_conversation_stage()
-        # TODO - handle end of conversation in the API - send a special token to the client?
+        
         if self.verbose:
             print("=" * 10)
             print(f"AI LOG {ai_log}")
-            
+
         if (
             self.sales_agent.conversation_history
             and "<END_OF_CALL>" in self.sales_agent.conversation_history[-1]
         ):
             print("Sales Agent determined it is time to end the conversation.")
-            # strip end of call for now
-            self.sales_agent.conversation_history[
-                -1
-            ] = self.sales_agent.conversation_history[-1].replace("<END_OF_CALL>", "")
+            self.sales_agent.conversation_history[-1] = self.sales_agent.conversation_history[-1].replace("<END_OF_CALL>", "")
 
         reply = (
             self.sales_agent.conversation_history[-1]
             if self.sales_agent.conversation_history
             else ""
         )
-        #print("AI LOG INTERMEDIATE STEPS: ", ai_log["intermediate_steps"])
 
         if (
             self.use_tools and 
             "intermediate_steps" in ai_log and 
             len(ai_log["intermediate_steps"]) > 0
         ):
-            
             try:
                 res_str = ai_log["intermediate_steps"][0]
                 print("RES STR: ", res_str)
@@ -119,10 +107,12 @@ class SalesGPTAPI:
                 )
                 actions = re.search(r"Action: (.*?)[\n]*Action Input: (.*)", log)
                 action_input = actions.group(2)
-                action_output =  res_str[1]
+                action_output = res_str[1]
                 if tool_input == action_input:
                     action_input=""
-                    action_output = action_output.replace("<web_search>", "<a href='https://www.google.com/search?q=")
+                    action_output = action_output.replace("<web_search>", "<a href='
+
+https://www.google.com/search?q=")
                     action_output = action_output.replace("</web_search>", "' target='_blank' rel='noopener noreferrer'>")
             except Exception as e:
                 print("ERROR: ", e)
@@ -145,12 +135,10 @@ class SalesGPTAPI:
             "tool_input": tool_input,
             "action_output": action_output,
             "action_input": action_input,
-            "model_name": self.model_name,
         }
         return payload
 
     async def do_stream(self, conversation_history: [str], human_input=None):
-        # TODO
         current_turns = len(conversation_history) + 1
         if current_turns >= self.max_num_turns:
             print("Maximum number of turns reached - ending the conversation.")
