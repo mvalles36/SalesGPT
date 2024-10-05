@@ -1,5 +1,4 @@
 from typing import Callable
-
 from langchain.prompts.base import StringPromptTemplate
 
 
@@ -16,16 +15,22 @@ class CustomPromptTemplateForTools(StringPromptTemplate):
         intermediate_steps = kwargs.pop("intermediate_steps")
         thoughts = ""
         for action, observation in intermediate_steps:
-            thoughts += action.log
+            thoughts += action.log  # Ensure this aligns with your logging structure
             thoughts += f"\nObservation: {observation}\nThought: "
+        
         # Set the agent_scratchpad variable to that value
         kwargs["agent_scratchpad"] = thoughts
+        
         ############## NEW ######################
-        tools = self.tools_getter(kwargs["input"])
+        # Call tools_getter to retrieve available tools based on input
+        tools = self.tools_getter(kwargs["input"])  # Ensure this method correctly filters tools based on your criteria
+        
         # Create a tools variable from the list of tools provided
         kwargs["tools"] = "\n".join(
-            [f"{tool.name}: {tool.description}" for tool in tools]
+            [f"{tool.name}: {tool.description}" for tool in tools]  # Make sure tools have these attributes
         )
         # Create a list of tool names for the tools provided
         kwargs["tool_names"] = ", ".join([tool.name for tool in tools])
-        return self.template.format(**kwargs)
+        
+        # Ensure the formatting of the final output aligns with your model's expectations
+        return self.template.format(**kwargs)  # This should now work with the adjusted prompt structure
