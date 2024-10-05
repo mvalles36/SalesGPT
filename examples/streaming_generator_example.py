@@ -1,36 +1,32 @@
 import os
-
+import requests
 from dotenv import load_dotenv
-from langchain_community.chat_models import ChatLiteLLM
-
-from salesgpt.agents import SalesGPT
 
 load_dotenv()
 
-llm = ChatLiteLLM(temperature=0.9, model_name="gpt-3.5-turbo-0613")
+API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large"
+headers = {"Authorization": f"Bearer {os.getenv('HUGGING_FACE_API_KEY')}"}
 
-sales_agent = SalesGPT.from_llm(
-    llm,
-    verbose=False,
-    salesperson_name="Ted Lasso",
-    salesperson_role="Sales Representative",
-    company_name="Sleep Haven",
-    company_business="""Sleep Haven 
+def query(payload):
+    response = requests.post(API_URL, headers=headers, json=payload)
+    return response.json()
+
+# Set up your agent specifics
+salesperson_name = "Ted Lasso"
+salesperson_role = "Sales Representative"
+company_name = "Sleep Haven"
+company_business = """Sleep Haven 
                             is a premium mattress company that provides
                             customers with the most comfortable and
                             supportive sleeping experience possible. 
                             We offer a range of high-quality mattresses,
                             pillows, and bedding accessories 
                             that are designed to meet the unique 
-                            needs of our customers.""",
-)
+                            needs of our customers."""
 
-sales_agent.seed_agent()
+# Example of how to query the model
+output = query({
+    "inputs": "Provide a sales pitch for Sleep Haven."
+})
 
-# get generator of the LLM output
-generator = sales_agent.step(stream=True)
-
-# operate on streaming LLM output in near-real time
-# for instance, do something after each full sentence is generated
-for chunk in generator:
-    print(chunk)
+print(output)
